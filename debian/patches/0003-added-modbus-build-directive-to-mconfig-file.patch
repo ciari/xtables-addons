@@ -1,0 +1,17 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Wed, 2 Jan 2019 14:17:07 +0300
+Subject: added modbus build directive to mconfig file
+
+---
+ mconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/mconfig b/mconfig
+index 74ccd03..0fdf239 100644
+--- a/mconfig
++++ b/mconfig
+@@ -22,3 +22,4 @@ build_lscan=m
+ build_pknock=m
+ build_psd=m
+ build_quota2=m
++build_modbus=m

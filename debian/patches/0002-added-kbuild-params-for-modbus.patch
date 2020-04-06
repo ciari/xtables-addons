@@ -1,0 +1,20 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Wed, 2 Jan 2019 14:16:26 +0300
+Subject: added kbuild params for modbus
+
+---
+ extensions/Kbuild | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/extensions/Kbuild b/extensions/Kbuild
+index 8fcb2de..4c06289 100644
+--- a/extensions/Kbuild
++++ b/extensions/Kbuild
+@@ -26,6 +26,7 @@ obj-${build_lscan}       += xt_lscan.o
+ obj-${build_pknock}      += pknock/
+ obj-${build_psd}         += xt_psd.o
+ obj-${build_quota2}      += xt_quota2.o
++obj-${build_modbus}      += xt_modbus.o
+ 
+ -include ${M}/*.Kbuild
+ -include ${M}/Kbuild.*

@@ -1,0 +1,8 @@
+0001-added-modbus-module.patch
+0002-added-kbuild-params-for-modbus.patch
+0003-added-modbus-build-directive-to-mconfig-file.patch
+0004-added-modbus-to-mbuild.patch
+0005-dnp3-module-files-added.patch
+0006-mconfig-for-dnp3.patch
+0007-Kbuild-patch-for-dnp3.patch
+0008-added-mbuild-parameters-for-dnp3.patch

@@ -1,0 +1,17 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Thu, 3 Jan 2019 16:08:02 +0300
+Subject: mconfig for dnp3
+
+---
+ mconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/mconfig b/mconfig
+index 0fdf239..7bb773f 100644
+--- a/mconfig
++++ b/mconfig
+@@ -23,3 +23,4 @@ build_pknock=m
+ build_psd=m
+ build_quota2=m
+ build_modbus=m
++build_dnp3=m

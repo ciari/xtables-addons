@@ -1,0 +1,18 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Wed, 2 Jan 2019 16:04:28 +0300
+Subject: added modbus to mbuild
+
+---
+ extensions/Mbuild | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/extensions/Mbuild b/extensions/Mbuild
+index 1176948..7069389 100644
+--- a/extensions/Mbuild
++++ b/extensions/Mbuild
+@@ -22,3 +22,5 @@ obj-${build_pknock}      += pknock/
+ obj-${build_psd}         += libxt_psd.so
+ obj-${build_quota2}      += libxt_quota2.so
+ obj-${build_gradm}       += libxt_gradm.so
++obj-${build_modbus}      += libxt_modbus.so
++

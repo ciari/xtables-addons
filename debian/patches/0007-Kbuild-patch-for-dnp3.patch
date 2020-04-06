@@ -1,0 +1,20 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Thu, 3 Jan 2019 16:18:10 +0300
+Subject: Kbuild patch for dnp3
+
+---
+ extensions/Kbuild | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/extensions/Kbuild b/extensions/Kbuild
+index 4c06289..ed9eb29 100644
+--- a/extensions/Kbuild
++++ b/extensions/Kbuild
+@@ -27,6 +27,7 @@ obj-${build_pknock}      += pknock/
+ obj-${build_psd}         += xt_psd.o
+ obj-${build_quota2}      += xt_quota2.o
+ obj-${build_modbus}      += xt_modbus.o
++obj-${build_dnp3}        += xt_dnp3.o
+ 
+ -include ${M}/*.Kbuild
+ -include ${M}/Kbuild.*

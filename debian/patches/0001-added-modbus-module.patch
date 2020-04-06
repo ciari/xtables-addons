@@ -1,0 +1,501 @@
+From: Ibrahim ARI <ibrahim.ari@pardus.org.tr>
+Date: Wed, 2 Jan 2019 14:15:41 +0300
+Subject: added modbus module
+
+---
+ extensions/libxt_modbus.c | 236 ++++++++++++++++++++++++++++++++++++++++++++++
+ extensions/libxt_modbus.h |  28 ++++++
+ extensions/xt_modbus.c    | 159 +++++++++++++++++++++++++++++++
+ extensions/xt_modbus.h    |  39 ++++++++
+ 4 files changed, 462 insertions(+)
+ create mode 100644 extensions/libxt_modbus.c
+ create mode 100644 extensions/libxt_modbus.h
+ create mode 100644 extensions/xt_modbus.c
+ create mode 100644 extensions/xt_modbus.h
+
+diff --git a/extensions/libxt_modbus.c b/extensions/libxt_modbus.c
+new file mode 100644
+index 0000000..f8c18e9
+--- /dev/null
++++ b/extensions/libxt_modbus.c
+@@ -0,0 +1,236 @@
++#include <stdio.h>
++#include <stdint.h>
++#include <netdb.h>
++#include <xtables.h>
++
++#include <xt_modbus.h>
++
++
++enum {
++    O_ID = 0,
++    O_PROTOCOL,
++    O_LENGTH,
++    O_UNIT,
++    O_FC,
++    O_REG,
++};
++
++static const struct xt_option_entry modbus_opts[] = {
++    { .name = "id", .id = O_ID, .type = XTTYPE_UINT16RC,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, id ) },
++    { .name = "prot", .id = O_PROTOCOL, .type = XTTYPE_UINT16,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, protocol ) }, 
++    { .name = "len", .id = O_LENGTH, .type = XTTYPE_UINT16,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, length ) },
++    { .name = "unit", .id = O_UNIT, .type = XTTYPE_UINT8RC,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, unit ) },
++    { .name = "fc", .id = O_FC, .type = XTTYPE_UINT8RC,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, fc ) },
++    { .name = "reg", .id = O_REG, .type = XTTYPE_UINT16RC,
++            .flags = XTOPT_INVERT | XTOPT_PUT,
++            XTOPT_POINTER( struct xt_modbus, reg ) },
++    XTOPT_TABLEEND,
++};
++
++
++static void 
++modbus_help( void ) 
++{
++    printf(
++"modbus match options:\n"
++"[!] --id transaction[:transaction]\n"
++"\t\t\t\ttransaction identifier(s)\n"
++"[!] --prot protocol\n"
++"\t\t\t\tprotocol identifier\n"
++"[!] --len length\n"
++"\t\t\t\tnumber of bytes\n"
++"[!] --unit addr[:addr]\n"
++"\t\t\t\tunit identifier(s)\n"
++"[!] --fc function[:function]\n"
++"\t\t\t\tfunction code(s)\n"
++"[!] --reg register[:register]\n"
++"\t\t\t\tregister(s)\n" );
++}
++
++
++static void 
++modbus_init( struct xt_entry_match *m )
++{
++    struct xt_modbus *modbusinfo = (struct xt_modbus *) m->data;
++
++    modbusinfo->id[1] = modbusinfo->unit[1]
++            = modbusinfo->fc[1]
++            = modbusinfo->reg[1]
++            = (uint16_t) ~0U;
++    modbusinfo->set = modbusinfo->invert = 0;
++}
++
++
++static void 
++modbus_parse( struct xt_option_call *cb )
++{
++    struct xt_modbus *modbusinfo = cb->data;
++    uint8_t flag;
++
++    flag = 0;
++    xtables_option_parse( cb );
++    switch( cb->entry->id ) {
++        case O_ID:
++            if( cb->nvals == 1 ) {
++                modbusinfo->id[1] = modbusinfo->id[0];
++            }
++            flag = XT_MODBUS_FLAG_ID;
++            break;
++        case O_PROTOCOL:
++            flag = XT_MODBUS_FLAG_PROTOCOL;
++            break;
++        case O_LENGTH:
++            flag = XT_MODBUS_FLAG_LENGTH;
++            break;
++        case O_UNIT:
++            if( cb->nvals == 1 ) {
++                modbusinfo->unit[1] = modbusinfo->unit[0];
++            }
++            flag = XT_MODBUS_FLAG_UNIT;
++            break;
++        case O_FC:
++            if( cb->nvals == 1 ) {
++                modbusinfo->fc[1] = modbusinfo->fc[0];
++            }
++            flag = XT_MODBUS_FLAG_FC;
++            break;
++        case O_REG:
++            if( cb->nvals == 1 ) {
++                modbusinfo->reg[1] = modbusinfo->reg[0];
++            }
++            flag = XT_MODBUS_FLAG_REG;
++            break;
++    }
++    if( cb->invert ) {
++        modbusinfo->invert |= flag;
++    }
++    modbusinfo->set |= flag;
++}
++
++
++static void
++modbus_output( const char *name, uint16_t min, uint16_t max, int invert, int flag )
++{
++    if( flag ) {
++        printf( " %s%s ", invert ? "! " : "", name );
++    
++        if( min != max ) {
++            printf( "%u:%u",
++                    min,
++                    max ); 
++        }
++        else {
++            printf( "%u", min );
++        }
++    }
++}
++
++
++static void
++modbus_print( const void *ip, const struct xt_entry_match *match, int numeric )
++{
++    const struct xt_modbus *modbusinfo = (struct xt_modbus *) match->data;
++
++    printf( " modbus" );
++
++    modbus_output( "id",
++            modbusinfo->id[0],
++            modbusinfo->id[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_ID,
++            modbusinfo->set & XT_MODBUS_FLAG_ID );
++    modbus_output( "prot",
++            modbusinfo->protocol,
++            modbusinfo->protocol,
++            modbusinfo->invert & XT_MODBUS_FLAG_PROTOCOL,
++            modbusinfo->set & XT_MODBUS_FLAG_PROTOCOL );
++    modbus_output( "len",
++            modbusinfo->length,
++            modbusinfo->length,
++            modbusinfo->invert & XT_MODBUS_FLAG_LENGTH,
++            modbusinfo->set & XT_MODBUS_FLAG_LENGTH );
++    modbus_output( "unit",
++            modbusinfo->unit[0],
++            modbusinfo->unit[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_UNIT,
++            modbusinfo->set & XT_MODBUS_FLAG_UNIT );
++    modbus_output( "fc",
++            modbusinfo->fc[0],
++            modbusinfo->fc[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_FC,
++            modbusinfo->set & XT_MODBUS_FLAG_FC );
++    modbus_output( "reg",
++            modbusinfo->reg[0],
++            modbusinfo->reg[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_REG,
++            modbusinfo->set & XT_MODBUS_FLAG_REG );
++}
++
++
++static void 
++modbus_save( const void *ip, const struct xt_entry_match *match )
++{
++    const struct xt_modbus *modbusinfo = (struct xt_modbus *) match->data;
++
++    modbus_output( "--id",
++            modbusinfo->id[0],
++            modbusinfo->id[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_ID,
++            modbusinfo->set & XT_MODBUS_FLAG_ID );
++    modbus_output( "--prot",
++            modbusinfo->protocol,
++            modbusinfo->protocol,
++            modbusinfo->invert & XT_MODBUS_FLAG_PROTOCOL,
++            modbusinfo->set & XT_MODBUS_FLAG_PROTOCOL );
++    modbus_output( "--len",
++            modbusinfo->length,
++            modbusinfo->length,
++            modbusinfo->invert & XT_MODBUS_FLAG_LENGTH,
++            modbusinfo->set & XT_MODBUS_FLAG_LENGTH );
++    modbus_output( "--unit",
++            modbusinfo->unit[0],
++            modbusinfo->unit[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_UNIT,
++            modbusinfo->set & XT_MODBUS_FLAG_UNIT );
++    modbus_output( "--fc",
++            modbusinfo->fc[0],
++            modbusinfo->fc[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_FC,
++            modbusinfo->set & XT_MODBUS_FLAG_FC );
++    modbus_output( "--reg",
++            modbusinfo->reg[0],
++            modbusinfo->reg[1],
++            modbusinfo->invert & XT_MODBUS_FLAG_REG,
++            modbusinfo->set & XT_MODBUS_FLAG_REG );
++}
++
++
++static struct xtables_match modbus_match = {
++    .family             = NFPROTO_UNSPEC,
++    .name               = "modbus",
++    .version            = XTABLES_VERSION,
++    .size               = XT_ALIGN( sizeof( struct xt_modbus ) ),
++    .userspacesize      = XT_ALIGN( sizeof( struct xt_modbus ) ),
++    .help               = modbus_help,
++    .init               = modbus_init,
++    .print              = modbus_print,
++    .save               = modbus_save,
++    .x6_parse           = modbus_parse,
++    .x6_options         = modbus_opts,
++};
++
++
++void
++_init( void) 
++{
++    xtables_register_match( &modbus_match );
++}
+diff --git a/extensions/libxt_modbus.h b/extensions/libxt_modbus.h
+new file mode 100644
+index 0000000..964e0c3
+--- /dev/null
++++ b/extensions/libxt_modbus.h
+@@ -0,0 +1,28 @@
++#ifndef _XT_MODBUS_H
++#define _XT_MODBUS_H
++
++
++#include <linux/types.h>
++
++
++struct xt_modbus {
++    __u16 id[2];        /* Invocation identification */
++    __u16 protocol;     /* Protocol identifier */
++    __u16 length;       /* Length */
++    __u8 unit[2];       /* Unit identifier */
++    __u8 fc[2];         /* Function code */
++    __u16 reg[2];       /* Registers range */
++    __u8 set;           /* Set flags */
++    __u8 invert;        /* Invert flags */
++};
++
++#define XT_MODBUS_FLAG_ID              (0x01)
++#define XT_MODBUS_FLAG_PROTOCOL        (0x02)
++#define XT_MODBUS_FLAG_LENGTH          (0x04)
++#define XT_MODBUS_FLAG_UNIT            (0x08)
++#define XT_MODBUS_FLAG_FC              (0x10)
++#define XT_MODBUS_FLAG_REG             (0x20)
++#define XT_MODBUS_FLAG_MASK            (0x3f)
++
++
++#endif
+diff --git a/extensions/xt_modbus.c b/extensions/xt_modbus.c
+new file mode 100644
+index 0000000..434d8b0
+--- /dev/null
++++ b/extensions/xt_modbus.c
+@@ -0,0 +1,159 @@
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <net/ip.h>
++#include <net/ipv6.h>
++#include <net/tcp.h>
++#include <net/udp.h>
++#include <linux/netfilter/x_tables.h>
++
++#include "xt_modbus.h"
++
++
++static int modbus_mt_checkentry( const struct xt_mtchk_param *par );
++
++static bool modbus_mt_match( const struct sk_buff *skb, struct xt_action_param *par );
++
++static inline bool modbus_mt_match_value( u16 value, u16 min, u16 max, bool invert );
++
++
++static int
++modbus_mt_checkentry( const struct xt_mtchk_param *par )
++{
++    const struct xt_modbus *modbusinfo = par->matchinfo;
++    
++    if( ( modbusinfo->set & ~XT_MODBUS_FLAG_MASK ) ||
++            ( modbusinfo->invert & ~XT_MODBUS_FLAG_MASK ) ) {
++        return -EINVAL;
++    }
++    return 0;
++}
++
++
++static bool
++modbus_mt_match( const struct sk_buff *skb,
++        struct xt_action_param *par )
++{
++    const struct xt_modbus *modbusinfo = par->matchinfo;
++    const struct iphdr *iph = ip_hdr( skb );
++    struct tcphdr *tcph;
++    struct udphdr *udph;
++    struct pkt_modbus *pkt;
++    u16 count, reg, val;
++    u8 *payload;
++    bool retval;
++
++    iph = ip_hdr( skb );
++    switch( iph->protocol ) {
++        case IPPROTO_TCP:
++            tcph = tcp_hdr( skb );
++            payload = ( ( u8 * ) tcph + ( tcph->doff * 4 ) );
++            break;
++        case IPPROTO_UDP:
++            udph = udp_hdr( skb );
++            payload = ( ( u8 * ) udph + sizeof( struct udphdr ) );
++            break;
++        default:
++            return false;
++    }
++
++    if( ( skb_tail_pointer( skb ) - payload ) < sizeof( struct pkt_modbus ) ) {
++        return false;
++    }
++    pkt = ( struct pkt_modbus * ) payload;
++
++    if( modbusinfo->set & XT_MODBUS_FLAG_ID ) {
++        val = ntohs( pkt->id );
++        if( ! modbus_mt_match_value( val,
++                modbusinfo->id[0],
++                modbusinfo->id[1],
++                !! ( modbusinfo->invert & XT_MODBUS_FLAG_ID ) ) ) {
++            return false;
++        }
++    }
++    if( modbusinfo->set & XT_MODBUS_FLAG_PROTOCOL ) {
++        val = ntohs( pkt->protocol );
++        if( ! modbus_mt_match_value( val,
++                modbusinfo->protocol,
++                modbusinfo->protocol,
++                !! ( modbusinfo->invert & XT_MODBUS_FLAG_PROTOCOL ) ) ) {
++            return false;
++        }
++    }
++    if( modbusinfo->set & XT_MODBUS_FLAG_LENGTH ) {
++        val = ntohs( pkt->length );
++        if( ! modbus_mt_match_value( val,
++                modbusinfo->length,
++                modbusinfo->length,
++                !! ( modbusinfo->invert & XT_MODBUS_FLAG_LENGTH ) ) ) {
++            return false;
++        }
++    }
++    if( modbusinfo->set & XT_MODBUS_FLAG_UNIT ) {
++        if( ! modbus_mt_match_value( pkt->unit,
++                modbusinfo->unit[0],
++                modbusinfo->unit[1],
++                !! ( modbusinfo->invert & XT_MODBUS_FLAG_UNIT ) ) ) {
++            return false;
++        }
++    }
++    if( modbusinfo->set & XT_MODBUS_FLAG_FC ) {
++        if( ! modbus_mt_match_value( pkt->fc,
++                modbusinfo->fc[0],
++                modbusinfo->fc[1],
++                !! ( modbusinfo->invert & XT_MODBUS_FLAG_FC ) ) ) {
++            return false;
++        }
++    }
++    if( modbusinfo->set & XT_MODBUS_FLAG_REG ) {
++        reg = ntohs( pkt->reg );
++        count = ntohs( pkt->count );
++        retval = ( ( modbusinfo->reg[0] <= ( reg + count - 1 ) ) &&
++                ( reg <= modbusinfo->reg[1] ) );
++        retval ^= ( !! ( modbusinfo->invert & XT_MODBUS_FLAG_REG ) );
++        if( ! retval ) {
++            return false;
++        }
++    }
++
++    return true;
++}
++
++
++static inline bool 
++modbus_mt_match_value( u16 value, u16 min, u16 max, bool invert )
++{
++    return ( ( value >= min ) && ( value <= max ) ^ invert );
++}
++
++
++static struct xt_match modbus_mt_reg[] __read_mostly = {
++    {
++        .name       = "modbus",
++        .family     = NFPROTO_IPV4,
++        .checkentry = modbus_mt_checkentry,
++        .match      = modbus_mt_match,
++        .matchsize  = sizeof( struct xt_modbus ),
++        .me         = THIS_MODULE,
++    },
++};
++
++
++static int __init
++modbus_mt_init( void )
++{
++    return xt_register_matches( modbus_mt_reg, ARRAY_SIZE( modbus_mt_reg ) );
++}
++
++
++static void __exit
++modbus_mt_exit( void )
++{
++    xt_unregister_matches( modbus_mt_reg, ARRAY_SIZE( modbus_mt_reg ) );
++}
++
++
++module_init( modbus_mt_init );
++module_exit( modbus_mt_exit );
++
++MODULE_AUTHOR( "Rob Casey <rcasey@gmail.com>" );
++MODULE_LICENSE( "GPL" );
+diff --git a/extensions/xt_modbus.h b/extensions/xt_modbus.h
+new file mode 100644
+index 0000000..d4c52d9
+--- /dev/null
++++ b/extensions/xt_modbus.h
+@@ -0,0 +1,39 @@
++#ifndef _XT_MODBUS_H
++#define _XT_MODBUS_H
++
++
++#include <linux/types.h>
++
++
++struct pkt_modbus {
++    __u16 id;           /* Transaction identifier */
++    __u16 protocol;     /* Protocol identifier */
++    __u16 length;       /* Length */
++    __u8 unit;          /* Unit identifier */
++    __u8 fc;            /* Function code */
++    __u16 reg;          /* Start register */
++    __u16 count;        /* Count */
++};
++
++
++struct xt_modbus {
++    __u16 id[2];        /* Transaction identifier */
++    __u16 protocol;     /* Protocol identifier */
++    __u16 length;       /* Length */
++    __u8 unit[2];       /* Unit identifier */
++    __u8 fc[2];         /* Function code */
++    __u16 reg[2];       /* Registers range */
++    __u8 set;           /* Set flags */
++    __u8 invert;        /* Invert flags */
++};
++
++#define XT_MODBUS_FLAG_ID              (0x01)
++#define XT_MODBUS_FLAG_PROTOCOL        (0x02)
++#define XT_MODBUS_FLAG_LENGTH          (0x04)
++#define XT_MODBUS_FLAG_UNIT            (0x08)
++#define XT_MODBUS_FLAG_FC              (0x10)
++#define XT_MODBUS_FLAG_REG             (0x20)
++#define XT_MODBUS_FLAG_MASK            (0x3f)
++
++
++#endif
